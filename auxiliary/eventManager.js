@@ -4,7 +4,7 @@ var LogManager = require('./logManager');
 
 
 // generic event handling module
-module.exports= {
+module.exports = {
   EventManager: function (engineID) {
     return {
       id: engineID,

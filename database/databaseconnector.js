@@ -333,7 +333,7 @@ async function readAllProcessTypes() {
     return final
 }
 
-//PROCESS_INSTANCE-related operations
+//PROCESS_INSTANCE related operations
 
 //Function to create a new process instance
 //Process instance status is automatically set to 'ongoing'
@@ -383,6 +383,99 @@ async function closeOngoingProcessInstance(processtype, instanceid, endtime, out
     attributes.push({ name: 'STATUS', type: 'S', value: 'finished' })
     attributes.push({ name: 'OUTCOME', type: 'S', value: outcome })
     await DYNAMO.updateItem('PROCESS_INSTANCE', pk, sk, attributes)
+}
+
+async function readAllProcessInstances(processtype) {
+    var keyexpression = 'PROCESS_TYPE_NAME = :processtype'
+    var expressionattributevalues = {
+        ':processtype': { S: processtype }
+    }
+    var result = await DYNAMO.query('PROCESS_INSTANCE', keyexpression, expressionattributevalues)
+
+    if (!result || result.length == 0) {
+        return []
+    }
+
+    var instances = []
+    for (var i = 0; i < result.length; i++) {
+        var instanceobj = new ProcessInstance(
+            result[i]['PROCESS_TYPE_NAME']['S'],
+            result[i]['INSTANCE_ID']['S'],
+            result[i]['STARTING_TIME'] ? parseInt(result[i]['STARTING_TIME']['N']) : -1,
+            result[i]['ENDING_TIME'] ? parseInt(result[i]['ENDING_TIME']['N']) : -1,
+            result[i]['STATUS']['S'],
+            result[i]['STAKEHOLDERS'] ? result[i]['STAKEHOLDERS']['SS'] : [],
+            result[i]['HOST'] ? result[i]['HOST']['S'] : 'localhost',
+            result[i]['PORT'] ? parseInt(result[i]['PORT']['N']) : 1883,
+            result[i]['OUTCOME'] ? result[i]['OUTCOME']['S'] : 'NA'
+        )
+        instances.push(instanceobj)
+    }
+
+    return instances
+}
+
+//PROCESS_DEVIATIONS related operations
+async function storeProcessDeviations(processtype, instanceid, perspective, deviations) {
+    const deviationsForStorage = deviations.map(deviation => {
+        const baseDeviation = {
+            type: deviation.type,
+            block_a: deviation.block_a,
+            block_b: deviation.block_b,
+            parentIndex: deviation.parentIndex,
+            iterationIndex: deviation.iterationIndex
+        };
+
+        if (deviation.type === 'MULTI_EXECUTION') {
+            baseDeviation.executionCount = deviation.executionCount;
+        }
+
+        return baseDeviation;
+    });
+
+    const pk = {
+        name: 'PROCESS_TYPE_PERSPECTIVE',
+        value: `${processtype}#${perspective}`
+    };
+    const sk = {
+        name: 'INSTANCE_ID',
+        value: instanceid
+    };
+
+    const attributes = [
+        { name: 'PROCESS_TYPE', type: 'S', value: processtype },
+        { name: 'PERSPECTIVE', type: 'S', value: perspective },
+        { name: 'DEVIATIONS', type: 'S', value: JSON.stringify(deviationsForStorage) },
+        { name: 'TIMESTAMP', type: 'N', value: (new Date().getTime() / 1000).toString() }
+    ];
+
+    return DYNAMO.writeItem('PROCESS_DEVIATIONS', pk, sk, attributes);
+}
+
+async function readAllProcessTypeDeviations(processtype, perspective) {
+    var keyexpression = 'PROCESS_TYPE_PERSPECTIVE = :ptperspective'
+    var expressionattributevalues = {
+        ':ptperspective': { S: `${processtype}#${perspective}` }
+    }
+    var result = await DYNAMO.query('PROCESS_DEVIATIONS', keyexpression, expressionattributevalues)
+
+    if (!result || result.length == 0) {
+        return {}
+    }
+
+    var deviations = {}
+    for (var i = 0; i < result.length; i++) {
+        var instanceId = result[i]['INSTANCE_ID']['S']
+        deviations[instanceId] = {
+            instanceId: instanceId,
+            processType: result[i]['PROCESS_TYPE']['S'],
+            perspective: result[i]['PERSPECTIVE']['S'],
+            deviations: JSON.parse(result[i]['DEVIATIONS']['S']),
+            timestamp: parseInt(result[i]['TIMESTAMP']['N'])
+        }
+    }
+
+    return deviations
 }
 
 //STAKEHOLDER operations
@@ -483,12 +576,17 @@ module.exports = {
     increaseProcessTypeInstanceCounter: increaseProcessTypeInstanceCounter,
     increaseProcessTypeBpmnJobCounter: increaseProcessTypeBpmnJobCounter,
     increaseProcessTypeStatisticsCounter: increaseProcessTypeStatisticsCounters,
-    readAllProcessTypes:readAllProcessTypes,
+    readAllProcessTypes: readAllProcessTypes,
 
     //[PROCESS_INSTANCE] operations
     writeNewProcessInstance: writeNewProcessInstance,
     readProcessInstance: readProcessInstance,
     closeOngoingProcessInstance: closeOngoingProcessInstance,
+    readAllProcessInstances: readAllProcessInstances,
+
+    //[PROCESS_DEVIATIONS] operations
+    storeProcessDeviations: storeProcessDeviations,
+    readAllProcessTypeDeviations: readAllProcessTypeDeviations,
 
     //[STAKEHOLDERS] operations
     writeNewStakeholder: writeNewStakeholder,

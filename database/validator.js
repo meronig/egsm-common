@@ -10,10 +10,10 @@ function validateProcessType(processtypename) {
     return true
 }
 
-function validateProcessInstance(processtypename, processinstnacename) {
+function validateProcessInstance(processtypename, processinstancename) {
     var typeresult = validateProcessType(processtypename)
-    if (!typeresult || processinstnacename.length < 1 || processinstnacename.includes('/')) {
-        LOG('ERROR', `Process instance name ${processtypename}/${processinstnacename} is invalid`, module.id)
+    if (!typeresult || processinstancename.length < 1 || processinstancename.includes('/')) {
+        LOG('ERROR', `Process instance name ${processtypename}/${processinstancename} is invalid`, module.id)
         return false
     }
     return true
@@ -45,10 +45,20 @@ function validateArtifactLogMessage(msgJson) {
     return true
 }
 
+function validateConditionLogMessage(msgJson) {
+    if (msgJson.process_type == undefined || msgJson.process_id  == undefined || msgJson.process_perspective  == undefined || msgJson.stage_name == undefined || msgJson.timestamp == undefined ||
+        msgJson.condition == undefined) {
+        LOG.logWorker('WARNING', `Data is missing to write ConditionEvent log`, module.id)
+        return false
+    }
+    return true
+}
+
 module.exports = {
     validateProcessType: validateProcessType,
     validateProcessInstance: validateProcessInstance,
     validateArtifact: validateArtifact,
     validateStageLogMessage: validateStageLogMessage,
     validateArtifactLogMessage: validateArtifactLogMessage,
+    validateConditionLogMessage: validateConditionLogMessage,
 }
